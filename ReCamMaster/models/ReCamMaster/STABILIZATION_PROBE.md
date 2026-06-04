@@ -39,7 +39,7 @@ results/stabilization_probe/camera_variants/
   trajectory_summary.json
 ```
 
-## Minimal Inference Smoke Test
+## Official-Shape Inference Test
 
 The official ReCamMaster README tests the example videos with:
 
@@ -51,46 +51,13 @@ That is a full demo inference, not a minimal environment check. It uses the
 normal 81-frame video setting and can run out of memory on a 32GB GPU if the
 attention backend falls back to regular scaled-dot-product attention.
 
-Use this smoke test first:
-
-```bash
-cd /path/to/ReCamMaster
-bash models/ReCamMaster/run_recammaster_smoke_test.sh 0
-```
-
-It runs one variant (`smooth`) with a tiny setting:
-
-- `num_frames=1`
-- `height=128`
-- `width=224`
-- `num_inference_steps=1`
-- `cfg_scale=1.0`
-- `torch_dtype=float16`
-- VRAM management enabled
-
 `float16` is the recommended dtype for V100. V100 does not have native BF16
 Tensor Core support, while the original ReCamMaster scripts use BF16 by default.
-
-Outputs:
-
-```text
-results/recammaster_smoke_test/smooth/video0.mp4
-logs/recammaster_smoke_test_gpu0.log
-```
-
-After it succeeds, increase the setting gradually:
-
-```bash
-bash models/ReCamMaster/run_recammaster_smoke_test.sh 0 \
-  --height 256 \
-  --width 448 \
-  --num_inference_steps 4
-```
 
 To test the official ReCamMaster shape while keeping the generation cheap:
 
 ```bash
-bash models/ReCamMaster/run_recammaster_full_shape_test.sh 0
+bash models/ReCamMaster/run_recammaster_full_shape_test.sh "0,1,2,3,4,5,6,7"
 ```
 
 This uses:

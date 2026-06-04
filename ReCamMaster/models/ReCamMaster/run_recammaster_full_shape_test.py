@@ -2,8 +2,8 @@
 
 This keeps the official spatial/temporal shape used by ReCamMaster
 (`height=480`, `width=832`, `num_frames=81`) while keeping denoising cheap
-(`num_inference_steps=1`, `cfg_scale=1.0`).  Use it after the minimal smoke test
-passes to check whether the server can handle the official token scale.
+(`num_inference_steps=1`, `cfg_scale=1.0`). Use it to check whether the server
+can handle the official token scale.
 """
 
 from __future__ import annotations

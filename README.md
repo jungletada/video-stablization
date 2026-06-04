@@ -87,11 +87,11 @@ ReCamMaster/models/ReCamMaster/
 - `trajectory_utils.py`：读取相机位姿、平滑轨迹、生成 camera embedding。
 - `run_stabilization_experiment.py`：生成目标轨迹并调用 ReCamMaster 推理。默认只运行 `smooth`。
 - `run_stabilization_single.sh`：服务器单次运行脚本，指定一张 GPU 和一组轨迹。
-- `run_recammaster_smoke_test.py`：最小推理测试，只验证 ReCamMaster 是否能成功生成一个 mp4。
-- `run_recammaster_smoke_test.sh`：服务器 smoke test 脚本，指定一张 GPU 并保存日志。
+- `run_recammaster_full_shape_test.py`：官方尺寸低步数推理测试。
+- `run_recammaster_full_shape_test.sh`：服务器官方尺寸测试脚本，指定可见 GPU 并保存日志。
 - `STABILIZATION_PROBE.md`：更详细的运行说明。
 
-## 最小推理 Smoke Test
+## 官方尺寸推理测试
 
 官方仓库的示例测试是：
 
@@ -101,69 +101,25 @@ python inference_recammaster.py --cam_type 1
 
 这个命令会按官方 demo 配置跑完整视频推理，默认 81 帧、480x832、50 个 denoise steps。它适合最终测试，但不适合先排查环境，因为在没有高效 attention 后端时很容易 OOM。
 
-本项目新增了更小的 smoke test，只生成 1 帧、128x224、1 个 denoise step、`cfg_scale=1.0`。它的目的不是评估画质，而是验证：
-
-- Wan2.1 和 ReCamMaster checkpoint 能正确加载。
-- VAE、text encoder、DiT 和 camera condition 能跑通。
-- pipeline 能成功输出 mp4。
-
-服务器上建议先跑：
-
-```bash
-cd ReCamMaster
-bash models/ReCamMaster/run_recammaster_smoke_test.sh 0
-```
-
-V100 不支持原生 BF16 Tensor Core，因此 smoke/full-shape 测试脚本默认使用：
-
-```text
---torch_dtype float16
-```
-
-如果在 3090/A100 等 BF16 支持更好的卡上测试，也可以覆盖成：
-
-```bash
-bash models/ReCamMaster/run_recammaster_smoke_test.sh 0 --torch_dtype bfloat16
-```
-
-输出位置：
-
-```text
-results/recammaster_smoke_test/smooth/video0.mp4
-logs/recammaster_smoke_test_gpu0.log
-```
-
-如果 smoke test 成功，再逐步增加配置，例如：
-
-```bash
-bash models/ReCamMaster/run_recammaster_smoke_test.sh 0 \
-  --height 256 \
-  --width 448 \
-  --num_inference_steps 4
-```
-
-如果要测试 ReCamMaster 官方尺寸：
+本项目保留一个官方尺寸但低步数的测试入口：
 
 ```text
 height = 480
 width = 832
 num_frames = 81
-```
-
-先跑 full-shape 但低步数的测试：
-
-```bash
-cd ReCamMaster
-bash models/ReCamMaster/run_recammaster_full_shape_test.sh 0
-```
-
-它默认仍然只跑：
-
-```text
 num_inference_steps = 1
 cfg_scale = 1.0
 torch_dtype = float16
 ```
+
+服务器上运行：
+
+```bash
+cd ReCamMaster
+bash models/ReCamMaster/run_recammaster_full_shape_test.sh "0,1,2,3,4,5,6,7"
+```
+
+V100 不支持原生 BF16 Tensor Core，因此该测试默认使用 `--torch_dtype float16`。如果在 3090/A100 等 BF16 支持更好的卡上测试，也可以覆盖成 `--torch_dtype bfloat16`。
 
 输出位置：
 
