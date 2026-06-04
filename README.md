@@ -134,7 +134,7 @@ python models/ReCamMaster/run_stabilization_experiment.py \
 ```bash
 cd ReCamMaster
 python models/ReCamMaster/run_stabilization_experiment.py \
-  --num_gpus 1 \
+  --num_gpus 8 \
   --device cuda \
   --enable_vram_management \
   --dataset_path ./example_test_data \
@@ -146,7 +146,7 @@ python models/ReCamMaster/run_stabilization_experiment.py \
 ```bash
 cd ReCamMaster
 python models/ReCamMaster/run_stabilization_experiment.py \
-  --cuda_devices 0,1 \
+  --cuda_devices 0,1,2,3,4,5,5,6,7 \
   --device cuda \
   --enable_vram_management \
   --dataset_path ./example_test_data \
