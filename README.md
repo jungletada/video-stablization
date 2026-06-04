@@ -59,21 +59,19 @@ frame 0, 4, 8, ..., 80 -> 共 21 个相机位姿
 | 输出 | 格式 | 含义 |
 | --- | --- | --- |
 | 生成视频 | `.mp4` | 按目标平滑相机轨迹重新生成的视频 |
-| 相机条件文件 | `.npy` | 三组实验轨迹对应的 camera embedding |
+| 相机条件文件 | `.npy` | 当前实验轨迹对应的 camera embedding |
 | 轨迹统计 | `.json` | 平滑前后旋转/平移步长与加速度统计 |
 
-在本项目的低风险实验中，会生成三组输出视频：
+当前默认只跑一组稳定实验，也就是 `smooth`：
 
 ```text
-raw/video0.mp4
 smooth/video0.mp4
-slow_static/video0.mp4
 ```
 
-三组条件含义：
+可选轨迹含义：
 
 - `raw`：原始相机轨迹，作为对照组。
-- `smooth`：简单平滑后的相机轨迹，目标是减少抖动但保留原始运镜趋势。
+- `smooth`：简单平滑后的相机轨迹，目标是减少抖动但保留原始运镜趋势。默认运行这一组。
 - `slow_static`：强平滑并压缩运动幅度，近似静止或缓慢运动镜头。
 
 ## 低风险实验脚本
@@ -87,7 +85,8 @@ ReCamMaster/models/ReCamMaster/
 关键文件：
 
 - `trajectory_utils.py`：读取相机位姿、平滑轨迹、生成 camera embedding。
-- `run_stabilization_experiment.py`：生成三组轨迹并调用 ReCamMaster 推理。
+- `run_stabilization_experiment.py`：生成目标轨迹并调用 ReCamMaster 推理。默认只运行 `smooth`。
+- `run_stabilization_single.sh`：服务器单次运行脚本，指定一张 GPU 和一组轨迹。
 - `STABILIZATION_PROBE.md`：更详细的运行说明。
 
 先只验证相机轨迹和 embedding，不加载大模型：
@@ -109,6 +108,7 @@ python models/ReCamMaster/run_stabilization_experiment.py \
   --pose_file ./example_test_data/cameras/camera_extrinsics.json \
   --source_cam cam01 \
   --output_dir ./results/stabilization_probe \
+  --variant smooth \
   --smooth_method moving_average \
   --smooth_window 9 \
   --slow_window 21
@@ -123,6 +123,7 @@ python models/ReCamMaster/run_stabilization_experiment.py \
   --pose_file ./example_test_data/cameras/camera_extrinsics.json \
   --source_cam cam01 \
   --output_dir ./results/stabilization_probe \
+  --variant smooth \
   --smooth_method moving_average \
   --smooth_window 9 \
   --slow_window 21 \
@@ -166,7 +167,7 @@ torch.cuda.OutOfMemoryError: Tried to allocate 95.96 GiB. GPU 0 ...
 ```bash
 cd ReCamMaster
 python models/ReCamMaster/run_stabilization_experiment.py \
-  --variants smooth \
+  --variant smooth \
   --enable_vram_management \
   --height 384 \
   --width 672 \
@@ -180,11 +181,11 @@ python models/ReCamMaster/run_stabilization_experiment.py \
 --height 256 --width 448
 ```
 
-服务器如果有多张 GPU，可以把三组轨迹分配到不同 GPU 进程上并行跑：
+服务器上推荐用单次脚本指定一张 GPU 和一组轨迹：
 
 ```bash
 cd ReCamMaster
-bash models/ReCamMaster/run_stabilization_multi_gpu.sh 0,1,2 \
+bash models/ReCamMaster/run_stabilization_single.sh 0 smooth \
   --enable_vram_management \
   --height 384 \
   --width 672 \
@@ -192,7 +193,7 @@ bash models/ReCamMaster/run_stabilization_multi_gpu.sh 0,1,2 \
   --pose_file ./example_test_data/cameras/camera_extrinsics.json
 ```
 
-这会让 `raw`、`smooth`、`slow_static` 分别在不同 GPU 进程上运行。它不是模型并行，单个推理仍只使用一张 GPU。
+这只会运行 `smooth` 一组实验，并把日志写到 `logs/stabilization_smooth_gpu0.log`。
 
 如果使用自己的每帧 `R,t`，并且已经保存为 `F x 4 x 4` 的 c2w 矩阵：
 
@@ -215,7 +216,7 @@ python models/ReCamMaster/run_stabilization_experiment.py \
 
 ## 如何评价稳定结果
 
-建议对比 `raw`、`smooth` 和 `slow_static` 三组视频，重点观察：
+建议先观察 `smooth` 输出，重点看：
 
 - 稳定性：全局抖动是否减少。
 - 身份保持：人物、物体、场景是否和源视频一致。
@@ -223,9 +224,9 @@ python models/ReCamMaster/run_stabilization_experiment.py \
 - 边缘补全：新露出的画面边缘是否自然。
 - 生成伪影：是否出现手部错误、脸部变形、纹理漂移、闪烁或重复肢体。
 
-如果 `smooth` 明显比 `raw` 稳定，同时身份和动作同步保持较好，说明“平滑目标相机轨迹 + ReCamMaster 重拍摄”的方向可继续推进。
+如果 `smooth` 的全局抖动明显减少，同时身份和动作同步保持较好，说明“平滑目标相机轨迹 + ReCamMaster 重拍摄”的方向可继续推进。
 
-如果 `slow_static` 稳定但内容明显漂移，说明目标轨迹与源视频差异过大，后续应限制虚拟相机轨迹不要偏离原始轨迹太远。
+如果需要对照，再分别运行 `--variant raw` 或 `--variant slow_static`。如果 `slow_static` 稳定但内容明显漂移，说明目标轨迹与源视频差异过大，后续应限制虚拟相机轨迹不要偏离原始轨迹太远。
 
 ## 项目结构
 

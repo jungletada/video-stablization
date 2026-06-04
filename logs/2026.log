@@ -1,0 +1,56 @@
+ma-user@notebook-f05cd625-bc45-43dc-9293-e153fe4d817f:/data/code_peng/code/video-stablization/ReCamMaster$ python models/ReCamMaster/run_stabilization_experiment.py   --num_gpus 8   --device cuda   --enable_vram_management   --dataset_path ./example_test_data   --pose_file ./example_test_data/cameras/camera_extrinsics.json
+CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7
+Exported camera variants to /data/code_peng/code/video-stablization/ReCamMaster/results/stabilization_probe/camera_variants
+  raw: camera embedding shape (21, 12)
+  smooth: camera embedding shape (21, 12)
+  slow_static: camera embedding shape (21, 12)
+Loading models from: /data/code_peng/code/video-stablization/ReCamMaster/models/Wan-AI/Wan2.1-T2V-1.3B/diffusion_pytorch_model.safetensors
+    model_name: wan_video_dit model_class: WanModel
+        This model is initialized with extra kwargs: {'has_image_input': False, 'patch_size': [1, 2, 2], 'in_dim': 16, 'dim': 1536, 'ffn_dim': 8960, 'freq_dim': 256, 'text_dim': 4096, 'out_dim': 16, 'num_heads': 12, 'num_layers': 30, 'eps': 1e-06}
+    The following models are loaded: ['wan_video_dit'].
+Loading models from: /data/code_peng/code/video-stablization/ReCamMaster/models/Wan-AI/Wan2.1-T2V-1.3B/models_t5_umt5-xxl-enc-bf16.pth
+    model_name: wan_video_text_encoder model_class: WanTextEncoder
+    The following models are loaded: ['wan_video_text_encoder'].
+Loading models from: /data/code_peng/code/video-stablization/ReCamMaster/models/Wan-AI/Wan2.1-T2V-1.3B/Wan2.1_VAE.pth
+    model_name: wan_video_vae model_class: WanVideoVAE
+    The following models are loaded: ['wan_video_vae'].
+Using wan_video_text_encoder from /data/code_peng/code/video-stablization/ReCamMaster/models/Wan-AI/Wan2.1-T2V-1.3B/models_t5_umt5-xxl-enc-bf16.pth.
+Using wan_video_dit from /data/code_peng/code/video-stablization/ReCamMaster/models/Wan-AI/Wan2.1-T2V-1.3B/diffusion_pytorch_model.safetensors.
+Using wan_video_vae from /data/code_peng/code/video-stablization/ReCamMaster/models/Wan-AI/Wan2.1-T2V-1.3B/Wan2.1_VAE.pth.
+No wan_video_image_encoder models available.
+VAE encoding: 100%|█████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 9/9 [00:50<00:00,  5.58s/it]
+  0%|                                                                                                                                                                  | 0/50 [00:00<?, ?it/s]
+Traceback (most recent call last):
+  File "/data/code_peng/code/video-stablization/ReCamMaster/models/ReCamMaster/run_stabilization_experiment.py", line 414, in <module>
+    main()
+  File "/data/code_peng/code/video-stablization/ReCamMaster/models/ReCamMaster/run_stabilization_experiment.py", line 409, in main
+    run_inference(args, embeddings)
+  File "/data/code_peng/code/video-stablization/ReCamMaster/models/ReCamMaster/run_stabilization_experiment.py", line 286, in run_inference
+    video = pipe(
+  File "/home/ma-user/anaconda3/envs/PyTorch-2.1.0/lib/python3.9/site-packages/torch/utils/_contextlib.py", line 115, in decorate_context
+    return func(*args, **kwargs)
+  File "/data/code_peng/code/video-stablization/ReCamMaster/diffsynth/pipelines/wan_video_recammaster.py", line 280, in __call__
+    noise_pred_posi = model_fn_wan_video(self.dit, latents_input, timestep=timestep, cam_emb=cam_emb, **prompt_emb_posi, **image_emb, **extra_input, **tea_cache_posi)
+  File "/data/code_peng/code/video-stablization/ReCamMaster/diffsynth/pipelines/wan_video_recammaster.py", line 393, in model_fn_wan_video
+    x = block(x, context, cam_emb, t_mod, freqs)
+  File "/home/ma-user/anaconda3/envs/PyTorch-2.1.0/lib/python3.9/site-packages/torch/nn/modules/module.py", line 1511, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+  File "/home/ma-user/anaconda3/envs/PyTorch-2.1.0/lib/python3.9/site-packages/torch/nn/modules/module.py", line 1520, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/data/code_peng/code/video-stablization/ReCamMaster/diffsynth/models/wan_video_dit.py", line 215, in forward
+    x = x + gate_msa * self.projector(self.self_attn(input_x, freqs))
+  File "/home/ma-user/anaconda3/envs/PyTorch-2.1.0/lib/python3.9/site-packages/torch/nn/modules/module.py", line 1511, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+  File "/home/ma-user/anaconda3/envs/PyTorch-2.1.0/lib/python3.9/site-packages/torch/nn/modules/module.py", line 1520, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/data/code_peng/code/video-stablization/ReCamMaster/diffsynth/models/wan_video_dit.py", line 143, in forward
+    x = self.attn(q, k, v)
+  File "/home/ma-user/anaconda3/envs/PyTorch-2.1.0/lib/python3.9/site-packages/torch/nn/modules/module.py", line 1511, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+  File "/home/ma-user/anaconda3/envs/PyTorch-2.1.0/lib/python3.9/site-packages/torch/nn/modules/module.py", line 1520, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/data/code_peng/code/video-stablization/ReCamMaster/diffsynth/models/wan_video_dit.py", line 117, in forward
+    x = flash_attention(q=q, k=k, v=v, num_heads=self.num_heads)
+  File "/data/code_peng/code/video-stablization/ReCamMaster/diffsynth/models/wan_video_dit.py", line 56, in flash_attention
+    x = F.scaled_dot_product_attention(q, k, v)
+torch.cuda.OutOfMemoryError: CUDA out of memory. Tried to allocate 95.96 GiB. GPU 0 has a total capacity of 31.74 GiB of which 26.35 GiB is free. Process 2270683 has 5.39 GiB memory in use. Of the allocated memory 4.82 GiB is allocated by PyTorch, and 213.35 MiB is reserved by PyTorch but unallocated. If reserved but unallocated memory is large try setting PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True to avoid fragmentation.  See documentation for Memory Management  (https://pytorch.org/docs/stable/notes/cuda.html#environment-variables)

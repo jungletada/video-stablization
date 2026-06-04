@@ -6,10 +6,13 @@ the target condition for ReCamMaster.
 ## What It Tests
 
 For one source video and one existing per-frame camera trajectory, the script
-generates three target trajectories:
+defaults to one target trajectory:
+
+- `smooth`: low-pass/Savitzky-Golay smoothed trajectory.
+
+Additional variants can be requested explicitly:
 
 - `raw`: original camera trajectory. This is the control group.
-- `smooth`: low-pass/Savitzky-Golay smoothed trajectory.
 - `slow_static`: heavily smoothed trajectory with motion shrunk around frame 0.
 
 Each trajectory is converted to the current ReCamMaster camera condition shape:
@@ -31,12 +34,8 @@ Outputs:
 
 ```text
 results/stabilization_probe/camera_variants/
-  raw_camera_embedding.npy
   smooth_camera_embedding.npy
-  slow_static_camera_embedding.npy
-  raw_sampled_c2w.npy
   smooth_sampled_c2w.npy
-  slow_static_sampled_c2w.npy
   trajectory_summary.json
 ```
 
@@ -51,6 +50,7 @@ python models/ReCamMaster/run_stabilization_experiment.py \
   --pose_file ./example_test_data/cameras/camera_extrinsics.json \
   --source_cam cam01 \
   --output_dir ./results/stabilization_probe \
+  --variant smooth \
   --smooth_method moving_average \
   --smooth_window 9 \
   --slow_window 21
@@ -64,6 +64,7 @@ python models/ReCamMaster/run_stabilization_experiment.py \
   --pose_file ./example_test_data/cameras/camera_extrinsics.json \
   --source_cam cam01 \
   --output_dir ./results/stabilization_probe \
+  --variant smooth \
   --smooth_method moving_average \
   --smooth_window 9 \
   --slow_window 21 \
@@ -105,7 +106,7 @@ does not reduce that attention activation peak. Start with a lower resolution:
 
 ```bash
 python models/ReCamMaster/run_stabilization_experiment.py \
-  --variants smooth \
+  --variant smooth \
   --enable_vram_management \
   --height 384 \
   --width 672 \
@@ -115,10 +116,10 @@ python models/ReCamMaster/run_stabilization_experiment.py \
 
 If needed, try `--height 256 --width 448`.
 
-To run variants on different GPUs in separate processes:
+To run one variant on one selected GPU with logging:
 
 ```bash
-bash models/ReCamMaster/run_stabilization_multi_gpu.sh 0,1,2 \
+bash models/ReCamMaster/run_stabilization_single.sh 0 smooth \
   --enable_vram_management \
   --height 384 \
   --width 672 \
@@ -126,25 +127,12 @@ bash models/ReCamMaster/run_stabilization_multi_gpu.sh 0,1,2 \
   --pose_file ./example_test_data/cameras/camera_extrinsics.json
 ```
 
-This runs `raw`, `smooth`, and `slow_static` on different GPU processes. It is
-not model parallelism; each single inference still uses one GPU.
-
-For quick debugging, run only one trajectory variant:
-
-```bash
-python models/ReCamMaster/run_stabilization_experiment.py \
-  --variants smooth \
-  --enable_vram_management \
-  --dataset_path ./example_test_data \
-  --pose_file ./example_test_data/cameras/camera_extrinsics.json
-```
+This runs only `smooth` on physical GPU 0 and writes a log under `logs/`.
 
 Generated videos are saved as:
 
 ```text
-results/stabilization_probe/raw/video0.mp4
 results/stabilization_probe/smooth/video0.mp4
-results/stabilization_probe/slow_static/video0.mp4
 ```
 
 ## Using Your Own R,t
@@ -179,7 +167,7 @@ format as the released dataset.
 
 ## What To Inspect
 
-Compare `raw`, `smooth`, and `slow_static` on:
+Inspect the `smooth` output on:
 
 - Stability: whether global shake is reduced.
 - Identity/content preservation: whether the subject and scene remain consistent.

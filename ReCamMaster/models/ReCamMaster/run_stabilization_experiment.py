@@ -337,7 +337,17 @@ def parse_args():
     )
 
     parser.add_argument("--output_dir", default="./results/stabilization_probe")
-    parser.add_argument("--variants", default="raw,smooth,slow_static")
+    parser.add_argument(
+        "--variant",
+        choices=["raw", "smooth", "slow_static"],
+        default=None,
+        help="Run a single trajectory variant. Defaults to smooth.",
+    )
+    parser.add_argument(
+        "--variants",
+        default="smooth",
+        help="Comma-separated variants to run. Kept for compatibility; default is smooth only.",
+    )
     parser.add_argument("--dry_run", action="store_true", help="Only export camera embeddings and summaries")
 
     parser.add_argument("--smooth_method", choices=["moving_average", "ema", "savgol"], default="moving_average")
@@ -392,6 +402,8 @@ def parse_args():
 
 def main() -> None:
     args = parse_args()
+    if args.variant is not None:
+        args.variants = args.variant
     if args.cuda_devices is None and args.num_gpus is not None:
         if args.num_gpus < 1:
             raise ValueError("--num_gpus must be >= 1")

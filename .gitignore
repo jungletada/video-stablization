@@ -5,13 +5,15 @@ __pycache__/
 .env
 .env.*
 *.log
+!logs/
+!logs/*.log
+!logs/**/*.log
 
 Paper/
 
 results/
 outputs/
 log/
-logs/
 
 *.ckpt
 *.checkpoint
