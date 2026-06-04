@@ -114,6 +114,18 @@ cd ReCamMaster
 bash models/ReCamMaster/run_recammaster_smoke_test.sh 0
 ```
 
+V100 不支持原生 BF16 Tensor Core，因此 smoke/full-shape 测试脚本默认使用：
+
+```text
+--torch_dtype float16
+```
+
+如果在 3090/A100 等 BF16 支持更好的卡上测试，也可以覆盖成：
+
+```bash
+bash models/ReCamMaster/run_recammaster_smoke_test.sh 0 --torch_dtype bfloat16
+```
+
 输出位置：
 
 ```text
@@ -150,6 +162,7 @@ bash models/ReCamMaster/run_recammaster_full_shape_test.sh 0
 ```text
 num_inference_steps = 1
 cfg_scale = 1.0
+torch_dtype = float16
 ```
 
 输出位置：

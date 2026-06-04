@@ -37,6 +37,8 @@ DEFAULT_ARGS = [
     "1",
     "--cfg_scale",
     "1.0",
+    "--torch_dtype",
+    "float16",
     "--dataloader_num_workers",
     "0",
     "--enable_vram_management",
@@ -48,4 +50,3 @@ if __name__ == "__main__":
     # as --height or --num_inference_steps can override this smoke-test preset.
     sys.argv = [sys.argv[0], *DEFAULT_ARGS, *sys.argv[1:]]
     run_stabilization_main()
-

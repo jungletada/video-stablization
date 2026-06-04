@@ -52,6 +52,19 @@ def repo_path(path: str | Path) -> Path:
     return REPO_ROOT / path
 
 
+def resolve_torch_dtype(dtype_name: str):
+    import torch
+
+    dtype_map = {
+        "bfloat16": torch.bfloat16,
+        "float16": torch.float16,
+        "float32": torch.float32,
+    }
+    if dtype_name not in dtype_map:
+        raise ValueError(f"Unsupported torch dtype: {dtype_name}")
+    return dtype_map[dtype_name]
+
+
 def make_fixed_camera_dataset_class():
     import imageio
     import pandas as pd
@@ -67,6 +80,7 @@ def make_fixed_camera_dataset_class():
             base_path: str | Path,
             metadata_path: str | Path,
             camera_embedding: np.ndarray,
+            camera_dtype,
             max_num_frames: int = 81,
             frame_interval: int = 1,
             num_frames: int = 81,
@@ -76,7 +90,7 @@ def make_fixed_camera_dataset_class():
             metadata = pd.read_csv(metadata_path)
             self.path = [str(Path(base_path) / "videos" / file_name) for file_name in metadata["file_name"]]
             self.text = metadata["text"].to_list()
-            self.camera_embedding = torch.as_tensor(camera_embedding, dtype=torch.bfloat16)
+            self.camera_embedding = torch.as_tensor(camera_embedding, dtype=camera_dtype)
             self.max_num_frames = max_num_frames
             self.frame_interval = frame_interval
             self.num_frames = num_frames
@@ -217,7 +231,9 @@ def load_pipeline(args):
     import torch.nn as nn
     from diffsynth import ModelManager, WanVideoReCamMasterPipeline
 
-    model_manager = ModelManager(torch_dtype=torch.bfloat16, device="cpu")
+    torch_dtype = resolve_torch_dtype(args.torch_dtype)
+    print(f"Using torch dtype: {torch_dtype}")
+    model_manager = ModelManager(torch_dtype=torch_dtype, device="cpu")
     model_manager.load_models(
         [
             str(repo_path(args.dit_path)),
@@ -239,13 +255,13 @@ def load_pipeline(args):
     state_dict = torch.load(repo_path(args.ckpt_path), map_location="cpu")
     pipe.dit.load_state_dict(state_dict, strict=True)
     if args.enable_vram_management:
-        pipe.to(dtype=torch.bfloat16)
+        pipe.to(dtype=torch_dtype)
         pipe.enable_vram_management(
             num_persistent_param_in_dit=args.num_persistent_param_in_dit
         )
     else:
         pipe.to(args.device)
-        pipe.to(dtype=torch.bfloat16)
+        pipe.to(dtype=torch_dtype)
     return pipe
 
 
@@ -265,6 +281,7 @@ def run_inference(args, embeddings: Dict[str, np.ndarray]) -> None:
     dataset_path = repo_path(args.dataset_path)
     metadata_path = dataset_path / "metadata.csv"
     FixedCameraVideoDataset = make_fixed_camera_dataset_class()
+    camera_dtype = resolve_torch_dtype(args.torch_dtype)
 
     for variant_name, embedding in embeddings.items():
         variant_dir = output_dir / variant_name
@@ -273,6 +290,7 @@ def run_inference(args, embeddings: Dict[str, np.ndarray]) -> None:
             dataset_path,
             metadata_path,
             embedding,
+            camera_dtype,
             max_num_frames=args.max_num_frames,
             frame_interval=args.frame_interval,
             num_frames=args.num_frames,
@@ -363,6 +381,12 @@ def parse_args():
     parser.add_argument("--text_encoder_path", default="./models/Wan-AI/Wan2.1-T2V-1.3B/models_t5_umt5-xxl-enc-bf16.pth")
     parser.add_argument("--vae_path", default="./models/Wan-AI/Wan2.1-T2V-1.3B/Wan2.1_VAE.pth")
     parser.add_argument("--device", default="cuda")
+    parser.add_argument(
+        "--torch_dtype",
+        choices=["bfloat16", "float16", "float32"],
+        default="bfloat16",
+        help="Computation dtype. Use float16 on V100; bfloat16 is better for Ampere/A100-class GPUs.",
+    )
     parser.add_argument(
         "--cuda_devices",
         default=None,

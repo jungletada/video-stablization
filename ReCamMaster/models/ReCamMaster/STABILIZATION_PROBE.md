@@ -65,7 +65,11 @@ It runs one variant (`smooth`) with a tiny setting:
 - `width=224`
 - `num_inference_steps=1`
 - `cfg_scale=1.0`
+- `torch_dtype=float16`
 - VRAM management enabled
+
+`float16` is the recommended dtype for V100. V100 does not have native BF16
+Tensor Core support, while the original ReCamMaster scripts use BF16 by default.
 
 Outputs:
 
@@ -97,6 +101,7 @@ width=832
 num_frames=81
 num_inference_steps=1
 cfg_scale=1.0
+torch_dtype=float16
 ```
 
 Outputs:
