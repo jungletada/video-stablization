@@ -237,8 +237,14 @@ def load_pipeline(args):
 
     state_dict = torch.load(repo_path(args.ckpt_path), map_location="cpu")
     pipe.dit.load_state_dict(state_dict, strict=True)
-    pipe.to(args.device)
-    pipe.to(dtype=torch.bfloat16)
+    if args.enable_vram_management:
+        pipe.to(dtype=torch.bfloat16)
+        pipe.enable_vram_management(
+            num_persistent_param_in_dit=args.num_persistent_param_in_dit
+        )
+    else:
+        pipe.to(args.device)
+        pipe.to(dtype=torch.bfloat16)
     return pipe
 
 
@@ -283,10 +289,17 @@ def run_inference(args, embeddings: Dict[str, np.ndarray]) -> None:
                 target_camera=target_camera,
                 cfg_scale=args.cfg_scale,
                 num_inference_steps=args.num_inference_steps,
+                height=args.height,
+                width=args.width,
+                num_frames=args.num_frames,
                 seed=args.seed,
                 tiled=True,
             )
             save_video(video, str(variant_dir / f"video{batch_idx}.mp4"), fps=args.fps, quality=5)
+
+            del video
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
 
 
 def parse_args():
@@ -332,6 +345,28 @@ def parse_args():
     parser.add_argument("--text_encoder_path", default="./models/Wan-AI/Wan2.1-T2V-1.3B/models_t5_umt5-xxl-enc-bf16.pth")
     parser.add_argument("--vae_path", default="./models/Wan-AI/Wan2.1-T2V-1.3B/Wan2.1_VAE.pth")
     parser.add_argument("--device", default="cuda")
+    parser.add_argument(
+        "--cuda_devices",
+        default=None,
+        help="Comma-separated physical GPU ids to expose, e.g. 0 or 0,1. Must be set before torch loads CUDA.",
+    )
+    parser.add_argument(
+        "--num_gpus",
+        type=int,
+        default=None,
+        help="Convenience option: expose GPUs 0..N-1. Ignored if --cuda_devices is set.",
+    )
+    parser.add_argument(
+        "--enable_vram_management",
+        action="store_true",
+        help="Enable CPU/GPU offload in ReCamMaster to reduce peak CUDA memory.",
+    )
+    parser.add_argument(
+        "--num_persistent_param_in_dit",
+        type=int,
+        default=None,
+        help="With VRAM management, keep this many DiT params persistent on GPU; lower uses less VRAM.",
+    )
 
     parser.add_argument("--dataloader_num_workers", type=int, default=1)
     parser.add_argument("--cfg_scale", type=float, default=5.0)
@@ -349,6 +384,15 @@ def parse_args():
 
 def main() -> None:
     args = parse_args()
+    if args.cuda_devices is None and args.num_gpus is not None:
+        if args.num_gpus < 1:
+            raise ValueError("--num_gpus must be >= 1")
+        args.cuda_devices = ",".join(str(i) for i in range(args.num_gpus))
+    if args.cuda_devices:
+        os.environ["CUDA_VISIBLE_DEVICES"] = args.cuda_devices
+        print(f"CUDA_VISIBLE_DEVICES={args.cuda_devices}")
+        if args.device == "cuda":
+            args.device = "cuda:0"
     os.chdir(REPO_ROOT)
     if args.apply_recammaster_axis_transform is None:
         args.apply_recammaster_axis_transform = args.pose_format == "recammaster_json"

@@ -56,6 +56,58 @@ python models/ReCamMaster/run_stabilization_experiment.py \
   --slow_window 21
 ```
 
+If CUDA runs out of memory, enable the built-in VRAM management mode:
+
+```bash
+python models/ReCamMaster/run_stabilization_experiment.py \
+  --dataset_path ./example_test_data \
+  --pose_file ./example_test_data/cameras/camera_extrinsics.json \
+  --source_cam cam01 \
+  --output_dir ./results/stabilization_probe \
+  --smooth_method moving_average \
+  --smooth_window 9 \
+  --slow_window 21 \
+  --enable_vram_management
+```
+
+To expose only a subset of GPUs:
+
+```bash
+python models/ReCamMaster/run_stabilization_experiment.py \
+  --num_gpus 1 \
+  --device cuda \
+  --enable_vram_management \
+  --dataset_path ./example_test_data \
+  --pose_file ./example_test_data/cameras/camera_extrinsics.json
+```
+
+or explicitly:
+
+```bash
+python models/ReCamMaster/run_stabilization_experiment.py \
+  --cuda_devices 0,1 \
+  --device cuda \
+  --enable_vram_management \
+  --dataset_path ./example_test_data \
+  --pose_file ./example_test_data/cameras/camera_extrinsics.json
+```
+
+Note: `--cuda_devices 0,1` controls which physical GPUs are visible to the
+process. The current ReCamMaster pipeline still runs one inference on one
+logical device (`cuda:0`) unless the underlying model is modified for model
+parallelism. For a single-video OOM, `--enable_vram_management`, smaller
+`--height/--width`, or fewer `--num_inference_steps` are the practical fixes.
+
+For quick debugging, run only one trajectory variant:
+
+```bash
+python models/ReCamMaster/run_stabilization_experiment.py \
+  --variants smooth \
+  --enable_vram_management \
+  --dataset_path ./example_test_data \
+  --pose_file ./example_test_data/cameras/camera_extrinsics.json
+```
+
 Generated videos are saved as:
 
 ```text

@@ -114,6 +114,47 @@ python models/ReCamMaster/run_stabilization_experiment.py \
   --slow_window 21
 ```
 
+如果服务器上遇到 CUDA out of memory，优先启用低显存模式：
+
+```bash
+cd ReCamMaster
+python models/ReCamMaster/run_stabilization_experiment.py \
+  --dataset_path ./example_test_data \
+  --pose_file ./example_test_data/cameras/camera_extrinsics.json \
+  --source_cam cam01 \
+  --output_dir ./results/stabilization_probe \
+  --smooth_method moving_average \
+  --smooth_window 9 \
+  --slow_window 21 \
+  --enable_vram_management
+```
+
+也可以指定当前进程可见的 GPU 数量：
+
+```bash
+cd ReCamMaster
+python models/ReCamMaster/run_stabilization_experiment.py \
+  --num_gpus 1 \
+  --device cuda \
+  --enable_vram_management \
+  --dataset_path ./example_test_data \
+  --pose_file ./example_test_data/cameras/camera_extrinsics.json
+```
+
+或显式指定 GPU id：
+
+```bash
+cd ReCamMaster
+python models/ReCamMaster/run_stabilization_experiment.py \
+  --cuda_devices 0,1 \
+  --device cuda \
+  --enable_vram_management \
+  --dataset_path ./example_test_data \
+  --pose_file ./example_test_data/cameras/camera_extrinsics.json
+```
+
+注意：`--cuda_devices 0,1` 只是控制进程能看到哪些物理 GPU。当前 ReCamMaster pipeline 没有做模型并行，单次推理仍会跑在一个逻辑设备上，默认是 `cuda:0`。如果是单次推理 OOM，真正有效的选项通常是 `--enable_vram_management`、降低 `--height/--width`，或者减少 `--num_inference_steps`。
+
 如果使用自己的每帧 `R,t`，并且已经保存为 `F x 4 x 4` 的 c2w 矩阵：
 
 ```bash
@@ -158,4 +199,3 @@ python models/ReCamMaster/run_stabilization_experiment.py \
 ```
 
 `Paper/`、模型权重、checkpoint 和生成结果已通过 `.gitignore` 排除。
-
