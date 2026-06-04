@@ -39,6 +39,50 @@ results/stabilization_probe/camera_variants/
   trajectory_summary.json
 ```
 
+## Minimal Inference Smoke Test
+
+The official ReCamMaster README tests the example videos with:
+
+```bash
+python inference_recammaster.py --cam_type 1
+```
+
+That is a full demo inference, not a minimal environment check. It uses the
+normal 81-frame video setting and can run out of memory on a 32GB GPU if the
+attention backend falls back to regular scaled-dot-product attention.
+
+Use this smoke test first:
+
+```bash
+cd /path/to/ReCamMaster
+bash models/ReCamMaster/run_recammaster_smoke_test.sh 0
+```
+
+It runs one variant (`smooth`) with a tiny setting:
+
+- `num_frames=1`
+- `height=128`
+- `width=224`
+- `num_inference_steps=1`
+- `cfg_scale=1.0`
+- VRAM management enabled
+
+Outputs:
+
+```text
+results/recammaster_smoke_test/smooth/video0.mp4
+logs/recammaster_smoke_test_gpu0.log
+```
+
+After it succeeds, increase the setting gradually:
+
+```bash
+bash models/ReCamMaster/run_recammaster_smoke_test.sh 0 \
+  --height 256 \
+  --width 448 \
+  --num_inference_steps 4
+```
+
 ## Full Inference
 
 After checkpoints are ready on the server:
