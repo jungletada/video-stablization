@@ -83,6 +83,29 @@ bash models/ReCamMaster/run_recammaster_smoke_test.sh 0 \
   --num_inference_steps 4
 ```
 
+To test the official ReCamMaster shape while keeping the generation cheap:
+
+```bash
+bash models/ReCamMaster/run_recammaster_full_shape_test.sh 0
+```
+
+This uses:
+
+```text
+height=480
+width=832
+num_frames=81
+num_inference_steps=1
+cfg_scale=1.0
+```
+
+Outputs:
+
+```text
+results/recammaster_full_shape_test/smooth/video0.mp4
+logs/recammaster_full_shape_test_gpu0.log
+```
+
 ## Full Inference
 
 After checkpoints are ready on the server:

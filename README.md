@@ -130,6 +130,35 @@ bash models/ReCamMaster/run_recammaster_smoke_test.sh 0 \
   --num_inference_steps 4
 ```
 
+如果要测试 ReCamMaster 官方尺寸：
+
+```text
+height = 480
+width = 832
+num_frames = 81
+```
+
+先跑 full-shape 但低步数的测试：
+
+```bash
+cd ReCamMaster
+bash models/ReCamMaster/run_recammaster_full_shape_test.sh 0
+```
+
+它默认仍然只跑：
+
+```text
+num_inference_steps = 1
+cfg_scale = 1.0
+```
+
+输出位置：
+
+```text
+results/recammaster_full_shape_test/smooth/video0.mp4
+logs/recammaster_full_shape_test_gpu0.log
+```
+
 先只验证相机轨迹和 embedding，不加载大模型：
 
 ```bash
