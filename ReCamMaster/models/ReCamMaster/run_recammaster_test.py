@@ -1,9 +1,11 @@
-"""Full-shape ReCamMaster inference test.
+"""ReCamMaster inference test with official demo-scale parameters.
 
-This keeps the official spatial/temporal shape used by ReCamMaster
-(`height=480`, `width=832`, `num_frames=81`) while keeping denoising cheap
-(`num_inference_steps=1`, `cfg_scale=1.0`). Use it to check whether the server
-can handle the official token scale.
+This mirrors the original ReCamMaster demo scale:
+`height=480`, `width=832`, `num_frames=81`, `num_inference_steps=50`,
+`cfg_scale=5.0`, `seed=0`, and `fps=30`.
+
+The intentional difference is dtype: this wrapper defaults to `float16` instead
+of the original BF16 path so it can run on V100 GPUs.
 """
 
 from __future__ import annotations
@@ -20,9 +22,9 @@ from run_stabilization_experiment import main as run_stabilization_main
 
 DEFAULT_ARGS = [
     "--variant",
-    "smooth",
+    "raw",
     "--output_dir",
-    "./results/recammaster_full_shape_test",
+    "./results/recammaster_test",
     "--height",
     "480",
     "--width",
@@ -34,14 +36,15 @@ DEFAULT_ARGS = [
     "--camera_stride",
     "4",
     "--num_inference_steps",
-    "1",
+    "50",
     "--cfg_scale",
-    "1.0",
+    "5.0",
+    "--seed",
+    "0",
+    "--fps",
+    "30",
     "--torch_dtype",
     "float16",
-    "--dataloader_num_workers",
-    "0",
-    "--enable_vram_management",
 ]
 
 

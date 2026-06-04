@@ -87,8 +87,8 @@ ReCamMaster/models/ReCamMaster/
 - `trajectory_utils.py`：读取相机位姿、平滑轨迹、生成 camera embedding。
 - `run_stabilization_experiment.py`：生成目标轨迹并调用 ReCamMaster 推理。默认只运行 `smooth`。
 - `run_stabilization_single.sh`：服务器单次运行脚本，指定一张 GPU 和一组轨迹。
-- `run_recammaster_full_shape_test.py`：官方尺寸低步数推理测试。
-- `run_recammaster_full_shape_test.sh`：服务器官方尺寸测试脚本，指定可见 GPU 并保存日志。
+- `run_recammaster_test.py`：尽量对齐官方参数的 ReCamMaster 推理测试。
+- `run_recammaster_test.sh`：服务器 ReCamMaster 测试脚本，指定可见 GPU 并保存日志。
 - `STABILIZATION_PROBE.md`：更详细的运行说明。
 
 ## 官方尺寸推理测试
@@ -99,16 +99,18 @@ ReCamMaster/models/ReCamMaster/
 python inference_recammaster.py --cam_type 1
 ```
 
-这个命令会按官方 demo 配置跑完整视频推理，默认 81 帧、480x832、50 个 denoise steps。它适合最终测试，但不适合先排查环境，因为在没有高效 attention 后端时很容易 OOM。
+这个命令会按官方 demo 配置跑完整视频推理，默认 81 帧、480x832、50 个 denoise steps。
 
-本项目保留一个官方尺寸但低步数的测试入口：
+本项目保留一个尽量对齐官方参数的测试入口，唯一默认差异是 dtype：V100 上默认使用 `float16`，而不是官方脚本里的 BF16。
 
 ```text
 height = 480
 width = 832
 num_frames = 81
-num_inference_steps = 1
-cfg_scale = 1.0
+num_inference_steps = 50
+cfg_scale = 5.0
+seed = 0
+fps = 30
 torch_dtype = float16
 ```
 
@@ -116,7 +118,7 @@ torch_dtype = float16
 
 ```bash
 cd ReCamMaster
-bash models/ReCamMaster/run_recammaster_full_shape_test.sh "0,1,2,3,4,5,6,7"
+bash models/ReCamMaster/run_recammaster_test.sh "0,1,2,3,4,5,6,7"
 ```
 
 V100 不支持原生 BF16 Tensor Core，因此该测试默认使用 `--torch_dtype float16`。如果在 3090/A100 等 BF16 支持更好的卡上测试，也可以覆盖成 `--torch_dtype bfloat16`。
@@ -124,8 +126,8 @@ V100 不支持原生 BF16 Tensor Core，因此该测试默认使用 `--torch_dty
 输出位置：
 
 ```text
-results/recammaster_full_shape_test/smooth/video0.mp4
-logs/recammaster_full_shape_test_gpu0.log
+results/recammaster_test/raw/video0.mp4
+logs/recammaster_test_gpu01234567.log
 ```
 
 先只验证相机轨迹和 embedding，不加载大模型：

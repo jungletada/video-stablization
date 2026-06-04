@@ -54,10 +54,10 @@ attention backend falls back to regular scaled-dot-product attention.
 `float16` is the recommended dtype for V100. V100 does not have native BF16
 Tensor Core support, while the original ReCamMaster scripts use BF16 by default.
 
-To test the official ReCamMaster shape while keeping the generation cheap:
+To test ReCamMaster with settings aligned to the original demo, except dtype:
 
 ```bash
-bash models/ReCamMaster/run_recammaster_full_shape_test.sh "0,1,2,3,4,5,6,7"
+bash models/ReCamMaster/run_recammaster_test.sh "0,1,2,3,4,5,6,7"
 ```
 
 This uses:
@@ -66,16 +66,18 @@ This uses:
 height=480
 width=832
 num_frames=81
-num_inference_steps=1
-cfg_scale=1.0
+num_inference_steps=50
+cfg_scale=5.0
+seed=0
+fps=30
 torch_dtype=float16
 ```
 
 Outputs:
 
 ```text
-results/recammaster_full_shape_test/smooth/video0.mp4
-logs/recammaster_full_shape_test_gpu0.log
+results/recammaster_test/raw/video0.mp4
+logs/recammaster_test_gpu01234567.log
 ```
 
 ## Full Inference
