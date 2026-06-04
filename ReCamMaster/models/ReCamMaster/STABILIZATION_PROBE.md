@@ -98,6 +98,37 @@ logical device (`cuda:0`) unless the underlying model is modified for model
 parallelism. For a single-video OOM, `--enable_vram_management`, smaller
 `--height/--width`, or fewer `--num_inference_steps` are the practical fixes.
 
+If the log says a single attention call tried to allocate tens of GiB, for
+example `Tried to allocate 95.96 GiB. GPU 0 ...`, the failure is in DiT
+self-attention activations. CPU/GPU offload reduces model weight memory, but it
+does not reduce that attention activation peak. Start with a lower resolution:
+
+```bash
+python models/ReCamMaster/run_stabilization_experiment.py \
+  --variants smooth \
+  --enable_vram_management \
+  --height 384 \
+  --width 672 \
+  --dataset_path ./example_test_data \
+  --pose_file ./example_test_data/cameras/camera_extrinsics.json
+```
+
+If needed, try `--height 256 --width 448`.
+
+To run variants on different GPUs in separate processes:
+
+```bash
+bash models/ReCamMaster/run_stabilization_multi_gpu.sh 0,1,2 \
+  --enable_vram_management \
+  --height 384 \
+  --width 672 \
+  --dataset_path ./example_test_data \
+  --pose_file ./example_test_data/cameras/camera_extrinsics.json
+```
+
+This runs `raw`, `smooth`, and `slow_static` on different GPU processes. It is
+not model parallelism; each single inference still uses one GPU.
+
 For quick debugging, run only one trajectory variant:
 
 ```bash

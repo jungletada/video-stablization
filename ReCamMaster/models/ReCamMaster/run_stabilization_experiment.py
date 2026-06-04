@@ -253,6 +253,13 @@ def run_inference(args, embeddings: Dict[str, np.ndarray]) -> None:
     import torch
     from diffsynth import save_video
 
+    if torch.cuda.is_available():
+        print(f"torch.cuda.device_count()={torch.cuda.device_count()}")
+        current_device = torch.device(args.device)
+        if current_device.type == "cuda":
+            index = torch.cuda.current_device() if current_device.index is None else current_device.index
+            print(f"Using logical CUDA device {index}: {torch.cuda.get_device_name(index)}")
+
     pipe = load_pipeline(args)
     output_dir = repo_path(args.output_dir)
     dataset_path = repo_path(args.dataset_path)

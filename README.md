@@ -155,6 +155,45 @@ python models/ReCamMaster/run_stabilization_experiment.py \
 
 注意：`--cuda_devices 0,1` 只是控制进程能看到哪些物理 GPU。当前 ReCamMaster pipeline 没有做模型并行，单次推理仍会跑在一个逻辑设备上，默认是 `cuda:0`。如果是单次推理 OOM，真正有效的选项通常是 `--enable_vram_management`、降低 `--height/--width`，或者减少 `--num_inference_steps`。
 
+如果日志里出现类似：
+
+```text
+torch.cuda.OutOfMemoryError: Tried to allocate 95.96 GiB. GPU 0 ...
+```
+
+这通常发生在 DiT self-attention，而不是模型权重加载阶段。`--enable_vram_management` 可以减少权重占用，但不能减少单次 attention 的峰值激活显存。建议先用较低分辨率测试：
+
+```bash
+cd ReCamMaster
+python models/ReCamMaster/run_stabilization_experiment.py \
+  --variants smooth \
+  --enable_vram_management \
+  --height 384 \
+  --width 672 \
+  --dataset_path ./example_test_data \
+  --pose_file ./example_test_data/cameras/camera_extrinsics.json
+```
+
+如果仍然 OOM，可以继续降到：
+
+```bash
+--height 256 --width 448
+```
+
+服务器如果有多张 GPU，可以把三组轨迹分配到不同 GPU 进程上并行跑：
+
+```bash
+cd ReCamMaster
+bash models/ReCamMaster/run_stabilization_multi_gpu.sh 0,1,2 \
+  --enable_vram_management \
+  --height 384 \
+  --width 672 \
+  --dataset_path ./example_test_data \
+  --pose_file ./example_test_data/cameras/camera_extrinsics.json
+```
+
+这会让 `raw`、`smooth`、`slow_static` 分别在不同 GPU 进程上运行。它不是模型并行，单个推理仍只使用一张 GPU。
+
 如果使用自己的每帧 `R,t`，并且已经保存为 `F x 4 x 4` 的 c2w 矩阵：
 
 ```bash

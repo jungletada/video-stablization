@@ -209,8 +209,13 @@ class DiTBlock(nn.Module):
         # encode camera
         cam_emb = self.cam_encoder(cam_emb)
         cam_emb = cam_emb.repeat(1, 2, 1)
-        cam_emb = cam_emb.unsqueeze(2).unsqueeze(3).repeat(1, 1, 30, 52, 1)
-        cam_emb = rearrange(cam_emb, 'b f h w d -> b (f h w) d')
+        if input_x.shape[1] % cam_emb.shape[1] != 0:
+            raise ValueError(
+                "Camera embedding length is incompatible with video tokens: "
+                f"{cam_emb.shape[1]} camera frames for {input_x.shape[1]} tokens."
+            )
+        spatial_tokens = input_x.shape[1] // cam_emb.shape[1]
+        cam_emb = cam_emb.repeat_interleave(spatial_tokens, dim=1)
         input_x = input_x + cam_emb
         x = x + gate_msa * self.projector(self.self_attn(input_x, freqs))
         
