@@ -1,9 +1,0 @@
-*.pyc
-.torch
-_ext
-*.o
-_ext/
-*.png
-*.jpg
-*.tar
-log/*
