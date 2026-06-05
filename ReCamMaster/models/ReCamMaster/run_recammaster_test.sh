@@ -5,7 +5,7 @@ set -euo pipefail
 #
 # This uses the original demo-scale settings: height=480, width=832,
 # num_frames=81, num_inference_steps=50, cfg_scale=5.0, seed=0, fps=30.
-# The intentional difference is --torch_dtype float16 for V100 compatibility.
+# It defaults to the original BF16 inference dtype.
 #
 # Example:
 #   bash models/ReCamMaster/run_recammaster_test.sh 0
@@ -36,7 +36,7 @@ echo "  width: 832"
 echo "  num_frames: 81"
 echo "  num_inference_steps: 50"
 echo "  cfg_scale: 5.0"
-echo "  torch_dtype: float16"
+echo "  torch_dtype: bfloat16"
 echo "  log: ${LOG_FILE}"
 
 (

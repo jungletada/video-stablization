@@ -65,6 +65,54 @@ def resolve_torch_dtype(dtype_name: str):
     return dtype_map[dtype_name]
 
 
+def print_startup_diagnostics(args) -> None:
+    import torch
+
+    print("Startup diagnostics")
+    print(f"  torch: {torch.__version__}")
+    print(f"  torch.version.cuda: {torch.version.cuda}")
+    print(f"  requested device: {args.device}")
+    print(f"  requested torch_dtype: {args.torch_dtype}")
+    print(f"  CUDA_VISIBLE_DEVICES: {os.environ.get('CUDA_VISIBLE_DEVICES', '<not set>')}")
+
+    if not torch.cuda.is_available():
+        print("  CUDA available: False")
+    else:
+        print("  CUDA available: True")
+        print(f"  torch.cuda.device_count(): {torch.cuda.device_count()}")
+        try:
+            print(f"  torch.cuda.is_bf16_supported(): {torch.cuda.is_bf16_supported()}")
+        except Exception as exc:
+            print(f"  torch.cuda.is_bf16_supported(): unavailable ({exc})")
+        for index in range(torch.cuda.device_count()):
+            capability = torch.cuda.get_device_capability(index)
+            name = torch.cuda.get_device_name(index)
+            total_gb = torch.cuda.get_device_properties(index).total_memory / (1024**3)
+            print(
+                f"  logical cuda:{index}: {name}, "
+                f"capability={capability}, total_vram={total_gb:.1f} GiB"
+            )
+
+    try:
+        from diffsynth.models import wan_video_dit
+
+        if wan_video_dit.FLASH_ATTN_3_AVAILABLE:
+            selected_backend = "FlashAttention 3"
+        elif wan_video_dit.FLASH_ATTN_2_AVAILABLE:
+            selected_backend = "FlashAttention 2"
+        elif wan_video_dit.SAGE_ATTN_AVAILABLE:
+            selected_backend = "SageAttention"
+        else:
+            selected_backend = "torch.scaled_dot_product_attention"
+        print("  attention backend availability:")
+        print(f"    FlashAttention 3: {wan_video_dit.FLASH_ATTN_3_AVAILABLE}")
+        print(f"    FlashAttention 2: {wan_video_dit.FLASH_ATTN_2_AVAILABLE}")
+        print(f"    SageAttention: {wan_video_dit.SAGE_ATTN_AVAILABLE}")
+        print(f"    selected by ReCamMaster: {selected_backend}")
+    except Exception as exc:
+        print(f"  attention backend diagnostics unavailable: {exc}")
+
+
 def make_fixed_camera_dataset_class():
     import imageio
     import pandas as pd
@@ -437,6 +485,7 @@ def main() -> None:
         print(f"CUDA_VISIBLE_DEVICES={args.cuda_devices}")
         if args.device == "cuda":
             args.device = "cuda:0"
+    print_startup_diagnostics(args)
     os.chdir(REPO_ROOT)
     if args.apply_recammaster_axis_transform is None:
         args.apply_recammaster_axis_transform = args.pose_format == "recammaster_json"

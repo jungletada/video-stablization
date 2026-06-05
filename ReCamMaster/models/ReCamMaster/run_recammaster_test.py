@@ -2,10 +2,7 @@
 
 This mirrors the original ReCamMaster demo scale:
 `height=480`, `width=832`, `num_frames=81`, `num_inference_steps=50`,
-`cfg_scale=5.0`, `seed=0`, and `fps=30`.
-
-The intentional difference is dtype: this wrapper defaults to `float16` instead
-of the original BF16 path so it can run on V100 GPUs.
+`cfg_scale=5.0`, `seed=0`, `fps=30`, and BF16 inference.
 """
 
 from __future__ import annotations
@@ -44,7 +41,7 @@ DEFAULT_ARGS = [
     "--fps",
     "30",
     "--torch_dtype",
-    "float16",
+    "bfloat16",
 ]
 
 
