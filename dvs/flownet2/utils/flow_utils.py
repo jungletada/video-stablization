@@ -1,6 +1,9 @@
 import numpy as np
-import matplotlib.pyplot as plt
 import os.path
+try:
+    import matplotlib.pyplot as plt
+except ModuleNotFoundError:
+    plt = None
 
 TAG_CHAR = np.array([202021.25], np.float32)
 
@@ -13,17 +16,17 @@ def readFlow(fn):
     # print 'fn = %s'%(fn)
     with open(fn, 'rb') as f:
         magic = np.fromfile(f, np.float32, count=1)
-        if 202021.25 != magic:
+        if magic.size != 1 or float(magic[0]) != 202021.25:
             print('Magic number incorrect. Invalid .flo file')
             return None
         else:
-            w = np.fromfile(f, np.int32, count=1)
-            h = np.fromfile(f, np.int32, count=1)
+            w = int(np.fromfile(f, np.int32, count=1)[0])
+            h = int(np.fromfile(f, np.int32, count=1)[0])
             # print 'Reading %d x %d flo file\n' % (w, h)
-            data = np.fromfile(f, np.float32, count=2*int(w)*int(h))
+            data = np.fromfile(f, np.float32, count=2*w*h)
             # Reshape data into 3D array (columns, rows, bands)
             # The reshape here is for visualization, the original code is (w,h,2)
-            return np.resize(data, (int(h), int(w), 2))
+            return np.resize(data, (h, w, 2))
 
 def writeFlow(filename,uv,v=None):
     """ Write optical flow to file.
@@ -60,6 +63,8 @@ def writeFlow(filename,uv,v=None):
 # ref: https://github.com/sampepose/flownet2-tf/
 # blob/18f87081db44939414fc4a48834f9e0da3e69f4c/src/flowlib.py#L240
 def visulize_flow_file(flow_filename, save_dir=None):
+	if plt is None:
+		raise RuntimeError("matplotlib is required to visualize flow files")
 	flow_data = readFlow(flow_filename)
 	img = flow2img(flow_data)
 	# plt.imshow(img)

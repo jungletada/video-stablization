@@ -26,7 +26,7 @@ from warp import warp_video
 
 os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 
-def run(model, loader, cf, USE_CUDA=True):
+def run(model, loader, cf, USE_CUDA=True, compute_loss=True):
     no_flo = False
     number_virtual, number_real = cf['data']["number_virtual"], cf['data']["number_real"]
     model.net.eval()
@@ -99,10 +99,11 @@ def run(model, loader, cf, USE_CUDA=True):
             out = torch_norm_quat(out)
 
             pos = torch_QuaternionProduct(virtual_position, real_postion_anchor)
-            loss_step = model.loss(out, vt_1, virtual_inputs, real_inputs_step, \
-                flo_step, flo_back_step, real_projections_t, real_projections_t_1, real_postion_anchor, \
-                follow = True, optical = True, undefine = True)
-            run_loss += loss_step
+            if compute_loss:
+                loss_step = model.loss(out, vt_1, virtual_inputs, real_inputs_step, \
+                    flo_step, flo_back_step, real_projections_t, real_projections_t_1, real_postion_anchor, \
+                    follow = True, optical = True, undefine = True)
+                run_loss += loss_step
 
             out = torch_QuaternionProduct(out, pos)
 
@@ -111,9 +112,10 @@ def run(model, loader, cf, USE_CUDA=True):
 
             virtual_queue = loader.dataset.update_virtual_queue(batch_size, virtual_queue, out, times[:,j+1])
     
-    run_loss /= step
-    print( "\nLoss: follow, angle, smooth, c2_smooth, undefine, optical")
-    print(run_loss.cpu().numpy()[:-1], "\n")
+    if compute_loss:
+        run_loss /= step
+        print( "\nLoss: follow, angle, smooth, c2_smooth, undefine, optical")
+        print(run_loss.cpu().numpy()[:-1], "\n")
     return np.squeeze(virtual_queue, axis=0)
 
 
@@ -187,10 +189,11 @@ def visual_result(cf, data, video_name, virtual_queue, virtual_queue2 = None, co
 def main(args = None):
     config_file = args.config
     dir_path = args.dir_path
-    cf = yaml.load(open(config_file, 'r'))
+    cf = yaml.safe_load(open(config_file, 'r'))
 
     USE_CUDA = cf['data']["use_cuda"]
 
+    os.makedirs(cf["data"]["log"], exist_ok=True)
     log_file = open(os.path.join(cf["data"]["log"], cf['data']['exp']+'_test.log'), 'w+')
     printer = Printer(sys.stdout, log_file).open()
 

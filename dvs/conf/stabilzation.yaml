@@ -13,7 +13,7 @@ data:
   channel_size: 1
   num_workers: 16                    # num_workers for data_loader
 model:
-  load_model:  null
+  load_model: './checkpoint/stabilization_last.checkpoint'
   cnn:
     activate_function: relu         # sigmoid, relu, tanh, quadratic
     batch_norm: true

@@ -3,7 +3,6 @@ import numpy as np
 from torch.autograd import Variable
 import operator
 import torch.nn.functional as F
-import matplotlib.pyplot as plt
 from gyro import (
     torch_QuaternionProduct, 
     torch_QuaternionReciprocal, 

@@ -4,7 +4,6 @@ import cv2
 from itertools import chain
 from warp import load_video, save_video
 import numpy as np
-import matplotlib.pyplot as plt
 from gyro import get_rotations
 import shutil
 

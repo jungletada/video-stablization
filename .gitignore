@@ -11,10 +11,11 @@ __pycache__/
 
 Paper/
 
-data/
 results/
 outputs/
 log/
+data/
+dvs/test/
 
 *.ckpt
 *.checkpoint

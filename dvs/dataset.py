@@ -74,6 +74,33 @@ def _data_transforms():
 
     return train_transform, test_transform
 
+def _matches_any(name, patterns):
+    name = name.lower()
+    return any(pattern in name for pattern in patterns)
+
+def _find_sensor_file(path, files, label, preferred_patterns, fallback_patterns):
+    candidates = [
+        f for f in files
+        if os.path.isfile(os.path.join(path, f))
+        and f.lower().endswith(".txt")
+        and _matches_any(f, preferred_patterns)
+    ]
+    if len(candidates) == 0:
+        candidates = [
+            f for f in files
+            if os.path.isfile(os.path.join(path, f))
+            and f.lower().endswith(".txt")
+            and _matches_any(f, fallback_patterns)
+        ]
+    if len(candidates) == 0:
+        raise FileNotFoundError(
+            f"Missing {label} file in {path}. Expected one of patterns: "
+            f"{preferred_patterns + fallback_patterns}"
+        )
+    if len(candidates) > 1:
+        raise ValueError(f"Ambiguous {label} files in {path}: {candidates}")
+    return os.path.join(path, candidates[0])
+
 class DVS_data():
     def __init__(self):
         self.gyro = None
@@ -123,21 +150,40 @@ class Dataset_Gyro(Dataset):
         dvs_data = DVS_data()
         files = sorted(os.listdir(path))
         print(path)
+
+        frame_path = _find_sensor_file(
+            path,
+            files,
+            "frame timestamp",
+            preferred_patterns=["vqf_frame_timestamps"],
+            fallback_patterns=["frame"],
+        )
+        gyro_path = _find_sensor_file(
+            path,
+            files,
+            "gyro",
+            preferred_patterns=["vqf_gyro_log"],
+            fallback_patterns=["gyro"],
+        )
+        ois_path = _find_sensor_file(
+            path,
+            files,
+            "ois",
+            preferred_patterns=["vqf_ois_log"],
+            fallback_patterns=["ois"],
+        )
+
+        dvs_data.frame = LoadFrameData(frame_path)
+        print("frame:", dvs_data.frame.shape, end="    ")
+        dvs_data.gyro = LoadGyroData(gyro_path)
+        dvs_data.gyro = preprocess_gyro(dvs_data.gyro)
+        print("gyro:", dvs_data.gyro.shape, end="    ")
+        dvs_data.ois = LoadOISData(ois_path)
+        print("ois:", dvs_data.ois.shape, end="    ")
+
         for f in files:
             file_path = os.path.join(path,f)
-            if "gimbal" in file_path.lower():
-                continue
-            if "frame" in f and "txt" in f:
-                dvs_data.frame = LoadFrameData(file_path)
-                print("frame:", dvs_data.frame.shape, end="    ")
-            elif "gyro" in f:
-                dvs_data.gyro = LoadGyroData(file_path)
-                dvs_data.gyro = preprocess_gyro(dvs_data.gyro) 
-                print("gyro:", dvs_data.gyro.shape, end="    ")
-            elif "ois" in f and "txt" in f:
-                dvs_data.ois = LoadOISData(file_path)
-                print("ois:", dvs_data.ois.shape, end="    ")
-            elif f == "flo":
+            if f == "flo":
                 dvs_data.flo_path, dvs_data.flo_shape = LoadFlow(file_path)
                 print("flo_path:", len(dvs_data.flo_path), end="    ")
                 print("flo_shape:", dvs_data.flo_shape, end="    ")
@@ -179,15 +225,28 @@ class Dataset_Gyro(Dataset):
     def load_flo(self, idx, first_id):
         shape = self.data[idx].flo_shape
         h, w = shape[0], shape[1]
+        resize_y = 1
+        resize_x = min(1, 256 / w)
+        if resize_y != 1 or resize_x != 1:
+            h = int(round(h * resize_y))
+            w = int(round(w * resize_x))
         flo = np.zeros((self.number_train, h, w, 2))
         flo_back = np.zeros((self.number_train, h, w, 2))
 
         for i in range(self.number_train):
             frame_id = i + first_id
             f = flow_utils.readFlow(self.data[idx].flo_path[frame_id-1]).astype(np.float32) 
+            if resize_y != 1 or resize_x != 1:
+                f = ndimage.zoom(f, (resize_y, resize_x, 1), order=1)
+                f[:, :, 0] *= resize_x
+                f[:, :, 1] *= resize_y
             flo[i] = f
 
             f_b = flow_utils.readFlow(self.data[idx].flo_back_path[frame_id-1]).astype(np.float32) 
+            if resize_y != 1 or resize_x != 1:
+                f_b = ndimage.zoom(f_b, (resize_y, resize_x, 1), order=1)
+                f_b[:, :, 0] *= resize_x
+                f_b[:, :, 1] *= resize_y
             flo_back[i] = f_b
 
         return flo, flo_back

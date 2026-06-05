@@ -97,7 +97,7 @@ def inference(cf, data_path, USE_CUDA):
 def main(args = None):
     config_file = args.config
     dir_path = args.dir_path
-    cf = yaml.load(open(config_file, 'r'))
+    cf = yaml.safe_load(open(config_file, 'r'))
     
     USE_CUDA = cf['data']["use_cuda"]
 

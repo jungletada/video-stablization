@@ -269,6 +269,67 @@ python models/ReCamMaster/run_stabilization_experiment.py \
 
 如果需要对照，再分别运行 `--variant raw` 或 `--variant slow_static`。如果 `slow_static` 稳定但内容明显漂移，说明目标轨迹与源视频差异过大，后续应限制虚拟相机轨迹不要偏离原始轨迹太远。
 
+## DVS 到 ReCamMaster 条件转换与可视化
+
+如果使用 DVS 直接估计平滑虚拟相机轨迹，当前实验链路是：
+
+```text
+DVS virtual_queue: N x 5
+-> 取 qx qy qz qw
+-> quaternion 转 R: N x 3 x 3
+-> translation 补 0
+-> 得到 N x 4 x 4 c2w
+-> 采样 frame 0, 4, 8, ..., 80 共 21 个 pose
+-> 转成 ReCamMaster 需要的 21 x 12 camera embedding
+```
+
+对应脚本：
+
+```bash
+cd dvs
+python run_dvs_to_recammaster.py \
+  --data_dir ../data \
+  --output_dir ./test/dvs_recammaster_condition \
+  --cuda_devices 0
+```
+
+每个 sample 会输出：
+
+```text
+virtual_queue.npy / .txt                 # DVS 原始输出，N x 5
+rotation_matrices.npy                    # N x 3 x 3
+c2w_zero_translation.npy                 # N x 4 x 4
+sampled_c2w_zero_translation.npy         # 21 x 4 x 4
+recammaster_camera_embedding.npy / .txt  # 21 x 12
+summary.json                             # 采样索引等信息
+```
+
+为了先判断 DVS 输出是否适合接入 ReCamMaster，可以运行可视化脚本：
+
+```bash
+cd dvs
+python visualize_dvs_recammaster_condition.py \
+  --input_dir ./test/dvs_recammaster_condition \
+  --output_dir ./test/dvs_recammaster_condition_visualizations
+```
+
+脚本会优先使用 Matplotlib 生成 PNG。如果环境没有 Matplotlib，会自动退回到纯 SVG/Pillow 渲染。也可以显式指定：
+
+```bash
+python visualize_dvs_recammaster_condition.py \
+  --renderer matplotlib \
+  --save_pdf
+```
+
+可视化图包含四部分：
+
+- `virtual_queue` 四元数 `qx qy qz qw` 随时间变化：用于检查 DVS 输出是否连续、是否存在突变或符号翻转。
+- 虚拟相机相对 identity 的旋转角：比直接看四元数更直观，适合观察整体运动幅度和回正过程。
+- 采样后的 21 个 ReCamMaster pose 的相对旋转角：这是 ReCamMaster 实际消费的稀疏相机条件，重点看是否过陡、过大或和源视频运动不匹配。
+- `21 x 12` embedding delta 热图：每行是一个采样 pose，每列是展平后的 `3 x 4` camera embedding 维度；它可以快速暴露某些维度是否异常放大、突然跳变或尺度不一致。
+
+判断标准上，比较理想的条件是：连续 `virtual_queue` 平滑，21 个采样 pose 的旋转角变化不过分陡峭，embedding 热图呈连续渐变。若某一段的 sampled rotation angle 明显大于其他段，通常应优先用它做压力测试；若 ReCamMaster 输出出现身份漂移或内容重绘过强，则需要限制 DVS 虚拟相机轨迹与原始相机轨迹的偏离。
+
 ## 项目结构
 
 ```text

@@ -1,7 +1,10 @@
 import numpy as np
 from numpy import linalg as LA
-import matplotlib.pyplot as plt
 import scipy.io as sio
+try:
+    import matplotlib.pyplot as plt
+except ModuleNotFoundError:
+    plt = None
 from .gyro_function import (
     ProcessGyroData, QuaternionProduct, QuaternionReciprocal, 
     ConvertQuaternionToAxisAngle, FindOISAtTimeStamp, GetMetadata,
@@ -48,6 +51,9 @@ def get_rotations(frame_data, quats_data, ois_data, num_frames):
     return rotations, lens_offsets
 
 def visual_rotation(rotations_real, lens_offsets_real, rotations_virtual, lens_offsets_virtual, rotations_virtual2, lens_offsets_virtual2, path):
+    if plt is None:
+        print("matplotlib is not installed; skip rotation visualization:", path)
+        return
     # figure('units','normalized','outerposition',[0 0 1 1])
     plt.clf()
     plt.figure(figsize=(8,16))

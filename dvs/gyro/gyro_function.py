@@ -1,6 +1,5 @@
 import numpy as np
 from numpy import linalg as LA
-import matplotlib.pyplot as plt
 import torch
 from torch.autograd import Variable
 
@@ -601,4 +600,3 @@ def torch_ApplyTransform(transform, point):
 def CenterZoom(grid, ratio):
     grid[:, 0:2, :, :]  = (grid[:, 0:2, :, :] - 0.5) * ratio + 0.5
     return grid
-
