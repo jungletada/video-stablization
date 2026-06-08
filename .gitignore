@@ -1,7 +1,7 @@
 .DS_Store
 __pycache__/
 *.py[cod]
-
+mti_eis_260126/
 .env
 .env.*
 *.log
