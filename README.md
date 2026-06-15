@@ -277,6 +277,7 @@ python models/ReCamMaster/run_stabilization_experiment.py \
 DVS virtual_queue: N x 5
 -> 取 qx qy qz qw
 -> quaternion 转 R: N x 3 x 3
+-> 按 DVS gyro/virtual-projection 约定取 R.T 作为 ReCamMaster c2w 旋转
 -> translation 补 0
 -> 得到 N x 4 x 4 c2w
 -> 采样 frame 0, 4, 8, ..., 80 共 21 个 pose
@@ -291,6 +292,23 @@ python run_dvs_to_recammaster.py \
   --data_dir ../data \
   --output_dir ./test/dvs_recammaster_condition \
   --cuda_devices 0
+```
+
+注意：DVS 的 `virtual_queue` 四元数使用的是 DVS 内部 gyro/virtual-projection 约定，不能直接当作 ReCamMaster 的 `c2w` 旋转矩阵。当前脚本默认使用：
+
+```text
+rotation_mode = inverse
+R_recammaster = R_dvs.T
+```
+
+如果要复现早期错误实验，可以显式指定 `--rotation_mode as_is`。如果已经有保存好的 `virtual_queue.npy`，无需重新跑 DVS 网络，可以直接重新导出 camera embedding：
+
+```bash
+cd dvs
+python run_dvs_to_recammaster.py \
+  --from_virtual_queue_dir ./test/dvs_recammaster_condition \
+  --output_dir ./test/dvs_recammaster_condition \
+  --rotation_mode inverse
 ```
 
 每个 sample 会输出：

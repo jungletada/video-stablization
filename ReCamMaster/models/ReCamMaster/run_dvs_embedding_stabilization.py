@@ -1,7 +1,9 @@
-"""Run ReCamMaster using DVS-exported 21 x 12 camera embeddings.
+"""Run ReCamMaster using DVS-exported camera embeddings.
 
 The script pairs each video under ../data with the matching camera embedding
 exported by dvs/run_dvs_to_recammaster.py and generates a stabilized video.
+For Wan/ReCamMaster, num_frames must be 4n + 1 and the camera embedding length
+must be (num_frames - 1) // 4 + 1.
 """
 
 from __future__ import annotations
@@ -112,12 +114,25 @@ def load_source_video(video_path: Path, args):
     return video
 
 
-def load_camera_embedding(embedding_path: Path, torch_dtype):
+def expected_pose_count(num_frames: int) -> int:
+    if num_frames % 4 != 1:
+        raise ValueError(
+            f"--num_frames must satisfy num_frames % 4 == 1 for ReCamMaster, got {num_frames}."
+        )
+    return (num_frames - 1) // 4 + 1
+
+
+def load_camera_embedding(embedding_path: Path, torch_dtype, pose_count: int, num_frames: int):
     import torch
 
     embedding = np.load(embedding_path).astype(np.float32)
-    if embedding.shape != (21, 12):
-        raise ValueError(f"Expected 21 x 12 camera embedding at {embedding_path}, got {embedding.shape}")
+    expected_shape = (pose_count, 12)
+    if embedding.shape != expected_shape:
+        raise ValueError(
+            f"Expected {expected_shape[0]} x 12 camera embedding at {embedding_path}, "
+            f"got {embedding.shape}. Re-export it with --num_frames {num_frames} "
+            f"--pose_count {pose_count}."
+        )
     return torch.as_tensor(embedding, dtype=torch_dtype).unsqueeze(0)
 
 
@@ -185,6 +200,7 @@ def main() -> None:
     selected = [s.strip() for s in args.samples.split(",")] if args.samples else None
     samples = sample_dirs(data_dir, selected)
     torch_dtype = resolve_torch_dtype(args.torch_dtype)
+    pose_count = expected_pose_count(args.num_frames)
 
     print("Input pairs")
     pairs = []
@@ -194,13 +210,19 @@ def main() -> None:
         if not embedding_path.exists():
             raise FileNotFoundError(f"Missing camera embedding: {embedding_path}")
         embedding = np.load(embedding_path)
-        if embedding.shape != (21, 12):
-            raise ValueError(f"Expected 21 x 12 camera embedding at {embedding_path}, got {embedding.shape}")
+        expected_shape = (pose_count, 12)
+        if embedding.shape != expected_shape:
+            raise ValueError(
+                f"Expected {expected_shape[0]} x 12 camera embedding at {embedding_path}, "
+                f"got {embedding.shape}. Re-export DVS with --num_frames {args.num_frames} "
+                f"--pose_count {pose_count}."
+            )
         output_path = output_dir / f"{sample_dir.name}_dvs_recammaster_stabilized.mp4"
         pairs.append((sample_dir.name, video_path, embedding_path, output_path))
         print(f"  {sample_dir.name}")
         print(f"    video: {video_path}")
         print(f"    camera: {embedding_path} shape={embedding.shape} dtype={embedding.dtype}")
+        print(f"    num_frames: {args.num_frames}, camera poses: {pose_count}")
         print(f"    output: {output_path}")
 
     if args.dry_run:
@@ -212,7 +234,7 @@ def main() -> None:
     for index, (name, video_path, embedding_path, output_path) in enumerate(pairs):
         print(f"\nRunning {index + 1}/{len(pairs)}: {name}")
         source_video = load_source_video(video_path, args)
-        target_camera = load_camera_embedding(embedding_path, torch_dtype)
+        target_camera = load_camera_embedding(embedding_path, torch_dtype, pose_count, args.num_frames)
         video = pipe(
             prompt=[args.prompt],
             negative_prompt=NEGATIVE_PROMPT,

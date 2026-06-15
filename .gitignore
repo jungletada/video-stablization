@@ -2,6 +2,7 @@
 __pycache__/
 *.py[cod]
 mti_eis_260126/
+da3/
 .env
 .env.*
 *.log

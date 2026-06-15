@@ -24,10 +24,11 @@ echo "Launching DVS embedding ReCamMaster stabilization"
 echo "  visible physical GPUs: ${GPU_IDS}"
 echo "  height: 480"
 echo "  width: 832"
-echo "  num_frames: 81"
+echo "  num_frames: 81 by default; pass --num_frames 161 for longer output"
 echo "  num_inference_steps: 50"
 echo "  cfg_scale: 5.0"
 echo "  torch_dtype: bfloat16"
+echo "  extra args: $*"
 echo "  log: ${LOG_FILE}"
 
 (
