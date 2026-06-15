@@ -1,0 +1,606 @@
+# Copyright (c), ETH Zurich and UNC Chapel Hill.
+# All rights reserved.
+#
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are met:
+#
+#     * Redistributions of source code must retain the above copyright
+#       notice, this list of conditions and the following disclaimer.
+#
+#     * Redistributions in binary form must reproduce the above copyright
+#       notice, this list of conditions and the following disclaimer in the
+#       documentation and/or other materials provided with the distribution.
+#
+#     * Neither the name of ETH Zurich and UNC Chapel Hill nor the names of
+#       its contributors may be used to endorse or promote products derived
+#       from this software without specific prior written permission.
+#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+# ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDERS OR CONTRIBUTORS BE
+# LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+# CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+# SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+# INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+# CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+# ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+# POSSIBILITY OF SUCH DAMAGE.
+
+import argparse
+from pathlib import Path
+
+import numpy as np
+import pytest
+
+import pycolmap
+
+from .utils import (
+    Metrics,
+    SceneInfo,
+    _parse_gpu_index,
+    aggregate_scene_metrics,
+    compute_abs_errors,
+    compute_auc,
+    compute_avg_metrics,
+    compute_recall,
+    compute_rel_errors,
+    diff_metrics,
+    filter_smallest_scenes_per_category,
+    get_scores,
+)
+
+
+def _make_scene_info(category: str, scene: str, num_images: int) -> SceneInfo:
+    return SceneInfo(
+        dataset="dummy",
+        category=category,
+        scene=scene,
+        num_images=num_images,
+        workspace_path=Path("/tmp/workspace"),
+        image_path=Path("/tmp/images"),
+        sparse_gt_path=Path("/tmp/sparse_gt"),
+        has_camera_priors=False,
+        colmap_extra_args=[],
+    )
+
+
+class TestFilterSmallestScenesPerCategory:
+    def test_picks_smallest_per_category(self):
+        scenes = [
+            _make_scene_info("a", "a3", 30),
+            _make_scene_info("a", "a1", 10),
+            _make_scene_info("a", "a2", 20),
+            _make_scene_info("b", "b2", 5),
+            _make_scene_info("b", "b1", 1),
+        ]
+        result = filter_smallest_scenes_per_category(scenes, num_scenes=2)
+        names = [(s.category, s.scene) for s in result]
+        assert names == [("a", "a1"), ("a", "a2"), ("b", "b2"), ("b", "b1")]
+
+    def test_preserves_input_order(self):
+        scenes = [
+            _make_scene_info("a", "a3", 30),
+            _make_scene_info("a", "a1", 10),
+            _make_scene_info("a", "a2", 20),
+        ]
+        result = filter_smallest_scenes_per_category(scenes, num_scenes=2)
+        # Smallest are a1 and a2, but the original order (a3, a1, a2) must
+        # be preserved among the kept scenes.
+        assert [s.scene for s in result] == ["a1", "a2"]
+
+    def test_num_scenes_larger_than_category_size(self):
+        scenes = [
+            _make_scene_info("a", "a1", 10),
+            _make_scene_info("a", "a2", 20),
+            _make_scene_info("b", "b1", 5),
+        ]
+        result = filter_smallest_scenes_per_category(scenes, num_scenes=10)
+        # All scenes are kept since each category has fewer than num_scenes.
+        assert [s.scene for s in result] == ["a1", "a2", "b1"]
+
+    def test_num_scenes_one(self):
+        scenes = [
+            _make_scene_info("a", "a1", 10),
+            _make_scene_info("a", "a2", 5),
+            _make_scene_info("b", "b1", 100),
+            _make_scene_info("b", "b2", 50),
+        ]
+        result = filter_smallest_scenes_per_category(scenes, num_scenes=1)
+        assert sorted((s.category, s.scene) for s in result) == [
+            ("a", "a2"),
+            ("b", "b2"),
+        ]
+
+    def test_empty_input(self):
+        assert filter_smallest_scenes_per_category([], num_scenes=3) == []
+
+    def test_ties_broken_stably(self):
+        # When several scenes share the same num_images, sorting must be
+        # stable so we keep the ones that appeared first in the input.
+        scenes = [
+            _make_scene_info("a", "a1", 10),
+            _make_scene_info("a", "a2", 10),
+            _make_scene_info("a", "a3", 10),
+        ]
+        result = filter_smallest_scenes_per_category(scenes, num_scenes=2)
+        assert [s.scene for s in result] == ["a1", "a2"]
+
+
+class TestParseGpuIndex:
+    @staticmethod
+    def _make_args(gpu_index: str) -> argparse.Namespace:
+        return argparse.Namespace(gpu_index=gpu_index)
+
+    def test_single_gpu(self):
+        assert _parse_gpu_index(self._make_args("0")) == [0]
+
+    def test_multiple_gpus(self):
+        assert _parse_gpu_index(self._make_args("0,1,2")) == [0, 1, 2]
+
+    def test_trailing_comma(self):
+        assert _parse_gpu_index(self._make_args("1,")) == [1]
+
+    def test_empty_string(self):
+        assert _parse_gpu_index(self._make_args("")) == [-1]
+
+    def test_only_commas(self):
+        assert _parse_gpu_index(self._make_args(",")) == [-1]
+
+    def test_auto_detect(self, monkeypatch):
+        monkeypatch.setattr(pycolmap, "has_cuda", True)
+        monkeypatch.setattr(
+            pycolmap, "get_num_cuda_devices", lambda: 3, raising=False
+        )
+        assert _parse_gpu_index(self._make_args("-1")) == [0, 1, 2]
+
+    def test_auto_detect_no_devices(self, monkeypatch):
+        monkeypatch.setattr(pycolmap, "has_cuda", True)
+        monkeypatch.setattr(
+            pycolmap, "get_num_cuda_devices", lambda: 0, raising=False
+        )
+        assert _parse_gpu_index(self._make_args("-1")) == [-1]
+
+
+class TestComputeAuc:
+    def test_simple_uniform_errors(self):
+        errors = np.array([0.1, 0.2, 0.3, 0.4, 0.5])
+        thresholds = np.array([0.25, 0.5, 1.0])
+        aucs = compute_auc(errors, thresholds)
+        np.testing.assert_almost_equal(aucs[0], 24.0, decimal=5)
+        np.testing.assert_almost_equal(aucs[1], 50.0, decimal=5)
+        np.testing.assert_almost_equal(aucs[2], 75.0, decimal=5)
+
+    def test_all_errors_zero(self):
+        errors = np.array([0.0, 0.0, 0.0])
+        thresholds = np.array([0.5, 1.0])
+        aucs = compute_auc(errors, thresholds)
+        np.testing.assert_array_almost_equal(aucs, [100.0, 100.0])
+
+    def test_empty_errors(self):
+        errors = np.array([])
+        thresholds = np.array([0.5, 1.0])
+        with pytest.raises(ValueError, match="No errors to evaluate"):
+            compute_auc(errors, thresholds)
+
+    def test_all_errors_above_threshold(self):
+        errors = np.array([10.0, 20.0, 30.0])
+        thresholds = np.array([5.0])
+        aucs = compute_auc(errors, thresholds)
+        np.testing.assert_almost_equal(aucs[0], 0.0)
+
+    def test_all_errors_below_threshold(self):
+        errors = np.array([0.1, 0.2, 0.3])
+        thresholds = np.array([1.0])
+        aucs = compute_auc(errors, thresholds)
+        np.testing.assert_almost_equal(aucs[0], 85.0, decimal=5)
+
+    def test_inf_errors(self):
+        errors = np.array([0.1, 0.2, np.inf, np.inf])
+        thresholds = np.array([0.5, 1.0])
+        aucs = compute_auc(errors, thresholds)
+        assert np.all(aucs >= 0)
+        assert np.all(aucs <= 100)
+
+    def test_single_error(self):
+        errors = np.array([0.5])
+        thresholds = np.array([0.3, 1.0])
+        aucs = compute_auc(errors, thresholds)
+        assert len(aucs) == 2
+        np.testing.assert_almost_equal(aucs[0], 0.0)
+        np.testing.assert_almost_equal(aucs[1], 75.0)
+
+
+class TestComputeRecall:
+    def test_basic_recall(self):
+        errors = np.array([0.1, 0.2, 0.3, 0.4, 0.5])
+        thresholds = np.array([0.05, 0.25, 0.5, 1.0])
+        recalls = compute_recall(errors, thresholds)
+        assert len(recalls) == 4
+        assert recalls[3] >= recalls[2] >= recalls[1] >= recalls[0]
+        assert np.all(recalls >= 0)
+        assert np.all(recalls <= 100)
+
+    def test_empty_errors(self):
+        errors = np.array([])
+        thresholds = np.array([0.5, 1.0])
+        with pytest.raises(ValueError, match="No errors to evaluate"):
+            compute_recall(errors, thresholds)
+
+    def test_all_errors_above_threshold(self):
+        errors = np.array([10.0, 20.0, 30.0])
+        thresholds = np.array([5.0])
+        recalls = compute_recall(errors, thresholds)
+        np.testing.assert_almost_equal(recalls[0], 0.0)
+
+    def test_all_errors_below_threshold(self):
+        errors = np.array([0.1, 0.2, 0.3])
+        thresholds = np.array([1.0])
+        recalls = compute_recall(errors, thresholds)
+        np.testing.assert_almost_equal(recalls[0], 100.0)
+
+    def test_exact_threshold(self):
+        errors = np.array([0.1, 0.5, 0.9])
+        thresholds = np.array([0.5])
+        recalls = compute_recall(errors, thresholds)
+        np.testing.assert_almost_equal(recalls[0], 200.0 / 3.0)
+
+    def test_multiple_thresholds(self):
+        errors = np.array([1.0, 2.0, 3.0, 4.0, 5.0])
+        thresholds = np.array([2.0, 3.0, 4.0])
+        recalls = compute_recall(errors, thresholds)
+        np.testing.assert_almost_equal(recalls[0], 40.0)
+        np.testing.assert_almost_equal(recalls[1], 60.0)
+        np.testing.assert_almost_equal(recalls[2], 80.0)
+
+
+class TestComputeAvgMetrics:
+    def test_single_scene(self):
+        scene_metrics = {
+            "scene1": Metrics(
+                aucs=np.array([10.0, 20.0, 30.0]),
+                recalls=np.array([15.0, 25.0, 35.0]),
+                error_thresholds=np.array([0.5, 1.0, 2.0]),
+                error_type="relative_auc",
+                num_images=100,
+                num_reg_images=90,
+                num_components=1,
+                largest_component=90,
+            )
+        }
+        aucs, recalls = compute_avg_metrics(scene_metrics)
+        np.testing.assert_array_equal(aucs, [10.0, 20.0, 30.0])
+        np.testing.assert_array_equal(recalls, [15.0, 25.0, 35.0])
+
+    def test_multiple_scenes(self):
+        scene_metrics = {
+            "scene1": Metrics(
+                aucs=np.array([10.0, 20.0, 30.0]),
+                recalls=np.array([15.0, 25.0, 35.0]),
+                error_thresholds=np.array([0.5, 1.0, 2.0]),
+                error_type="relative_auc",
+                num_images=100,
+                num_reg_images=90,
+                num_components=1,
+                largest_component=90,
+            ),
+            "scene2": Metrics(
+                aucs=np.array([20.0, 30.0, 40.0]),
+                recalls=np.array([25.0, 35.0, 45.0]),
+                error_thresholds=np.array([0.5, 1.0, 2.0]),
+                error_type="relative_auc",
+                num_images=100,
+                num_reg_images=90,
+                num_components=1,
+                largest_component=90,
+            ),
+        }
+        aucs, recalls = compute_avg_metrics(scene_metrics)
+        np.testing.assert_array_equal(aucs, [15.0, 25.0, 35.0])
+        np.testing.assert_array_equal(recalls, [20.0, 30.0, 40.0])
+
+    def test_skip_special_scenes(self):
+        scene_metrics = {
+            "scene1": Metrics(
+                aucs=np.array([10.0, 20.0, 30.0]),
+                recalls=np.array([15.0, 25.0, 35.0]),
+                error_thresholds=np.array([0.5, 1.0, 2.0]),
+                error_type="relative_auc",
+                num_images=100,
+                num_reg_images=90,
+                num_components=1,
+                largest_component=90,
+            ),
+            "__avg__": Metrics(
+                aucs=np.array([50.0, 60.0, 70.0]),
+                recalls=np.array([55.0, 65.0, 75.0]),
+                error_thresholds=np.array([0.5, 1.0, 2.0]),
+                error_type="relative_auc",
+                num_images=100,
+                num_reg_images=90,
+                num_components=1,
+                largest_component=90,
+            ),
+            "__all__": Metrics(
+                aucs=np.array([80.0, 90.0, 100.0]),
+                recalls=np.array([85.0, 95.0, 105.0]),
+                error_thresholds=np.array([0.5, 1.0, 2.0]),
+                error_type="relative_auc",
+                num_images=100,
+                num_reg_images=90,
+                num_components=1,
+                largest_component=90,
+            ),
+        }
+        aucs, recalls = compute_avg_metrics(scene_metrics)
+        # Should only average scene1, not __avg__ or __all__
+        np.testing.assert_array_equal(aucs, [10.0, 20.0, 30.0])
+        np.testing.assert_array_equal(recalls, [15.0, 25.0, 35.0])
+
+
+class TestAggregateSceneMetrics:
+    @staticmethod
+    def _make_metrics(aucs, recalls, errors, num_images=100, num_reg_images=90):
+        return Metrics(
+            aucs=np.array(aucs, dtype=float),
+            recalls=np.array(recalls, dtype=float),
+            error_thresholds=np.array([0.5, 1.0, 2.0]),
+            error_type="relative_auc",
+            num_images=num_images,
+            num_reg_images=num_reg_images,
+            num_components=1,
+            largest_component=num_reg_images,
+            errors=np.array(errors, dtype=float),
+            position_accuracy_gt=0.01,
+        )
+
+    def test_avg_and_all(self):
+        scene_metrics = [
+            (
+                "scene1",
+                self._make_metrics([10, 20, 30], [15, 25, 35], [0.1, 0.5]),
+            ),
+            (
+                "scene2",
+                self._make_metrics([20, 30, 40], [25, 35, 45], [0.2, 1.5]),
+            ),
+        ]
+        summary = aggregate_scene_metrics(
+            scene_metrics,
+            error_thresholds=np.array([0.5, 1.0, 2.0]),
+            error_type="relative_auc",
+        )
+        np.testing.assert_array_equal(
+            summary["__avg__"].aucs, [15.0, 25.0, 35.0]
+        )
+        np.testing.assert_array_equal(
+            summary["__avg__"].recalls, [20.0, 30.0, 40.0]
+        )
+        assert summary["__avg__"].num_images == 100
+        assert summary["__avg__"].num_reg_images == 90
+        np.testing.assert_array_equal(
+            summary["__all__"].errors, [0.1, 0.5, 0.2, 1.5]
+        )
+        # __all__ aggregates totals (not means).
+        assert summary["__all__"].num_images == 200
+        assert summary["__all__"].num_reg_images == 180
+
+    def test_skips_special_entries(self):
+        real = self._make_metrics([10, 20, 30], [15, 25, 35], [0.1])
+        special = self._make_metrics(
+            [99, 99, 99], [99, 99, 99], [9.0], num_images=999
+        )
+        summary = aggregate_scene_metrics(
+            [("scene1", real), ("__avg__", special), ("__all__", special)],
+            error_thresholds=np.array([0.5, 1.0, 2.0]),
+            error_type="relative_auc",
+        )
+        np.testing.assert_array_equal(summary["__avg__"].aucs, real.aucs)
+        np.testing.assert_array_equal(summary["__all__"].errors, [0.1])
+
+    def test_empty_input(self):
+        assert (
+            aggregate_scene_metrics(
+                [],
+                error_thresholds=np.array([0.5, 1.0, 2.0]),
+                error_type="relative_auc",
+            )
+            == {}
+        )
+
+    def test_no_errors_omits_all(self):
+        # When no scene carries raw errors (e.g. metrics restored without
+        # the errors field), __all__ cannot be reconstructed.
+        scene_metrics = [
+            ("scene1", self._make_metrics([10, 20, 30], [15, 25, 35], [])),
+            ("scene2", self._make_metrics([20, 30, 40], [25, 35, 45], [])),
+        ]
+        summary = aggregate_scene_metrics(
+            scene_metrics,
+            error_thresholds=np.array([0.5, 1.0, 2.0]),
+            error_type="relative_auc",
+        )
+        assert "__all__" not in summary
+        assert "__avg__" in summary
+
+
+class TestGetScores:
+    def test_get_auc_scores(self):
+        metrics = Metrics(
+            aucs=np.array([10.0, 20.0, 30.0]),
+            recalls=np.array([15.0, 25.0, 35.0]),
+            error_thresholds=np.array([0.5, 1.0, 2.0]),
+            error_type="relative_auc",
+            num_images=100,
+            num_reg_images=90,
+            num_components=1,
+            largest_component=90,
+        )
+        scores = get_scores("relative_auc", metrics)
+        np.testing.assert_array_equal(scores, metrics.aucs)
+
+    def test_get_recall_scores(self):
+        metrics = Metrics(
+            aucs=np.array([10.0, 20.0, 30.0]),
+            recalls=np.array([15.0, 25.0, 35.0]),
+            error_thresholds=np.array([0.5, 1.0, 2.0]),
+            error_type="relative_recall",
+            num_images=100,
+            num_reg_images=90,
+            num_components=1,
+            largest_component=90,
+        )
+        scores = get_scores("relative_recall", metrics)
+        np.testing.assert_array_equal(scores, metrics.recalls)
+
+
+class TestDiffMetrics:
+    def test_nominal(self):
+        metrics_a = {
+            "dataset1": {
+                "category1": {
+                    "scene1": Metrics(
+                        aucs=np.array([20.0, 30.0, 40.0]),
+                        recalls=np.array([25.0, 35.0, 45.0]),
+                        error_thresholds=np.array([0.5, 1.0, 2.0]),
+                        error_type="relative_auc",
+                        num_images=100,
+                        num_reg_images=90,
+                        num_components=2,
+                        largest_component=80,
+                    )
+                }
+            }
+        }
+        metrics_b = {
+            "dataset1": {
+                "category1": {
+                    "scene1": Metrics(
+                        aucs=np.array([10.0, 20.0, 30.0]),
+                        recalls=np.array([15.0, 25.0, 35.0]),
+                        error_thresholds=np.array([0.5, 1.0, 2.0]),
+                        error_type="relative_auc",
+                        num_images=100,
+                        num_reg_images=85,
+                        num_components=1,
+                        largest_component=85,
+                    )
+                }
+            }
+        }
+        diff = diff_metrics(metrics_a, metrics_b)
+
+        scene_diff = diff["dataset1"]["category1"]["scene1"]
+        np.testing.assert_array_equal(scene_diff.aucs, [10.0, 10.0, 10.0])
+        np.testing.assert_array_equal(scene_diff.recalls, [10.0, 10.0, 10.0])
+        assert scene_diff.num_reg_images == 5
+        assert scene_diff.num_components == 1
+
+
+def create_test_reconstruction():
+    pycolmap.set_random_seed(0)
+    synthetic_dataset_options = pycolmap.SyntheticDatasetOptions()
+    synthetic_dataset_options.num_cameras_per_rig = 1
+    synthetic_dataset_options.num_frames_per_rig = 5
+    synthetic_dataset_options.num_points3D = 0
+    return pycolmap.synthesize_dataset(synthetic_dataset_options)
+
+
+class TestComputeAbsErrors:
+    def test_identical_reconstruction(self):
+        reconstruction = create_test_reconstruction()
+
+        dts, dRs = compute_abs_errors(
+            sparse_gt=reconstruction, sparse=reconstruction
+        )
+
+        assert len(dts) == reconstruction.num_images()
+        assert len(dRs) == reconstruction.num_images()
+        np.testing.assert_allclose(dts, 0.0, atol=1e-10)
+        np.testing.assert_allclose(dRs, 0.0, atol=1e-10)
+
+    def test_transformed_reconstruction(self):
+        gt_reconstruction = create_test_reconstruction()
+        reconstruction = create_test_reconstruction()
+        translation = np.array([1, 2, 3])
+        for frame in reconstruction.frames.values():
+            world_from_rig = frame.rig_from_world.inverse()
+            world_from_rig.rotation = (
+                world_from_rig.rotation * pycolmap.Rotation3d([0, 1, 0, 0])
+            )
+            world_from_rig.translation += translation
+            frame.rig_from_world = world_from_rig.inverse()
+
+        dts, dRs = compute_abs_errors(
+            sparse_gt=gt_reconstruction, sparse=reconstruction
+        )
+
+        assert len(dts) == reconstruction.num_images()
+        assert len(dRs) == reconstruction.num_images()
+        np.testing.assert_allclose(dts, np.linalg.norm(translation), atol=1e-10)
+        np.testing.assert_allclose(dRs, 180.0, atol=1e-10)
+
+
+class TestComputeRelErrors:
+    def test_identical_reconstruction(self):
+        reconstruction = create_test_reconstruction()
+
+        dts, dRs = compute_rel_errors(
+            sparse_gt=reconstruction,
+            sparse=reconstruction,
+            min_proj_center_dist=0.01,
+        )
+
+        num_images = reconstruction.num_images()
+        expected_num_errors = num_images * (num_images - 1)
+        assert len(dts) == expected_num_errors
+        assert len(dRs) == expected_num_errors
+        np.testing.assert_allclose(dts, 0.0, atol=1e-5)
+        np.testing.assert_allclose(dRs, 0.0, atol=1e-5)
+
+    def test_transformed_reconstruction(self):
+        gt_reconstruction = create_test_reconstruction()
+        reconstruction = create_test_reconstruction()
+        reconstruction.transform(
+            pycolmap.Sim3d(
+                1.0,
+                pycolmap.Rotation3d(np.array([0, 1, 0, 0])),
+                np.array([1, 2, 3]),
+            )
+        )
+
+        dts, dRs = compute_rel_errors(
+            sparse_gt=gt_reconstruction,
+            sparse=reconstruction,
+            min_proj_center_dist=0.01,
+        )
+
+        num_images = reconstruction.num_images()
+        expected_num_errors = num_images * (num_images - 1)
+        assert len(dts) == expected_num_errors
+        assert len(dRs) == expected_num_errors
+        np.testing.assert_allclose(dts, 0.0, atol=1e-5)
+        np.testing.assert_allclose(dRs, 0.0, atol=1e-5)
+
+    def test_different_reconstructions(self):
+        gt_reconstruction = create_test_reconstruction()
+        reconstruction = create_test_reconstruction()
+        for image in reconstruction.images.values():
+            image.frame.rig_from_world.rotation = (
+                pycolmap.Rotation3d(np.array([0, 1, 0, 0]))
+                * image.frame.rig_from_world.rotation
+            )
+            image.frame.rig_from_world.translation += np.array([1, 2, 3])
+
+        dts, dRs = compute_rel_errors(
+            sparse_gt=gt_reconstruction,
+            sparse=reconstruction,
+            min_proj_center_dist=0.01,
+        )
+
+        num_images = reconstruction.num_images()
+        expected_num_errors = num_images * (num_images - 1)
+        assert len(dts) == expected_num_errors
+        assert len(dRs) == expected_num_errors
+        assert np.all(dts > 0.1)
+        assert np.all(dRs > 0.1)
